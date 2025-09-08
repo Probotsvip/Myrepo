@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0ff0fc;
+            --secondary: #a74dff;
+            --dark: #0a1128;
+            --darker: #050a1d;
+            --light: #ccd6f6;
+            --accent: #ff2a6d;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Exo 2', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 100%);
+            color: var(--light);
+            min-height: 100vh;
+            padding: 0;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(10, 217, 255, 0.2);
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 28px;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 10px rgba(10, 217, 255, 0.5);
+        }
+        
+        .logo i {
+            font-size: 32px;
+            color: var(--primary);
+        }
+        
+        .nav {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .nav a {
+            color: var(--light);
+            text-decoration: none;
+            font-weight: 600;
+            padding: 10px 15px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .nav a:hover, .nav a.active {
+            color: var(--primary);
+            background: rgba(10, 217, 255, 0.1);
+        }
+        
+        .nav a:hover::after, .nav a.active::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(10, 217, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-title i {
+            color: var(--primary);
+        }
+        
+        .table-container {
+            background: rgba(7, 14, 39, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(10, 217, 255, 0.1);
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(10, 217, 255, 0.1);
+        }
+        
+        th {
+            background: rgba(10, 217, 255, 0.05);
+            font-weight: 600;
+            color: var(--primary);
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        tr:hover {
+            background: rgba(10, 217, 255, 0.03);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge.video {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff0000;
+        }
+        
+        .badge.audio {
+            background: rgba(0, 255, 135, 0.2);
+            color: #00ff87;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 10px;
+        }
+        
+        .pagination a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 5px;
+            background: rgba(10, 217, 255, 0.1);
+            color: var(--light);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .pagination a:hover, .pagination a.active {
+            background: var(--primary);
+            color: var(--dark);
+        }
+        
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+            }
+            
+            .nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-database"></i>
+                <h1>CACHE MANAGEMENT</h1>
+            </div>
+            <div class="nav">
+                <a href="/admin"><i class="fas fa-chart-line"></i> Dashboard</a>
+                <a href="/admin/keys"><i class="fas fa-key"></i> API Keys</a>
+                <a href="/admin/cache" class="active"><i class="fas fa-database"></i> Cache</a>
+            </div>
+        </header>
+
+        <div class="section">
+            <h2 class="section-title"><i class="fas fa-database"></i> Cached Files ({{ total }} total)</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>YouTube ID</th>
+                            <th>Title</th>
+                            <th>Type</th>
+                            <th>Quality</th>
+                            <th>Cached At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in cached_items %}
+                        <tr>
+                            <td>{{ item.ytid }}</td>
+                            <td>{{ item.meta.title[:50] }}{% if item.meta.title|length > 50 %}...{% endif %}</td>
+                            <td><span class="badge {{ item.type }}">{{ item.type }}</span></td>
+                            <td>{{ item.meta.quality }}</td>
+                            <td>{{ item.cached_at.strftime('%Y-%m-%d %H:%M') if item.cached_at else 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% for p in range(1, total_pages + 1) %}
+                <a href="?page={{ p }}&key={{ request.query_params.get('key') or '' }}" class="{{ 'active' if p == page else '' }}">{{ p }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
