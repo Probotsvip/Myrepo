@@ -41,7 +41,7 @@ logger = logging.getLogger("yt_api_pro")
 # -------------------
 API_ID = int(os.getenv("API_ID", "22947426"))
 API_HASH = os.getenv("API_HASH", "3ac67de232f419724b3c905e1934bc7b")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8373349591:AAE43gKh5bBBH1bH9hZbICgFMu2KjAkwgGo")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8373349591:AAFRVmMO58XYcPNQHkykM3luyH2sMI_pAtA")
 CACHE_CHANNEL_ID = int(os.getenv("CACHE_CHANNEL_ID", "-1003086955999"))
 MONGO_DB_URI = os.getenv("MONGO_DB_URI", "mongodb+srv://jaydipmore74:xCpTm5OPAfRKYnif@cluster0.5jo18.mongodb.net/?retryWrites=true&w=majority")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "111222")
