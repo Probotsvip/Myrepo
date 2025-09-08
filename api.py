@@ -973,5 +973,5 @@ async def admin_cache(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 6000))
+    port = int(os.environ.get("PORT", 7000))
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
