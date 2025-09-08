@@ -1,4 +1,3 @@
-# api.py (Enhanced version with admin panel)
 import os
 import re
 import json
@@ -6,6 +5,7 @@ import base64
 import asyncio
 import logging
 import secrets
+import random
 import datetime
 from typing import Optional, Dict, Any, List, Tuple
 from zoneinfo import ZoneInfo
@@ -41,7 +41,7 @@ logger = logging.getLogger("yt_api_pro")
 # -------------------
 API_ID = int(os.getenv("API_ID", "22947426"))
 API_HASH = os.getenv("API_HASH", "3ac67de232f419724b3c905e1934bc7b")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8373349591:AAFRVmMO58XYcPNQHkykM3luyH2sMI_pAtA")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8495258927:AAEG9JBCRagfOHnpbYBFyMeMmjDLnCsyAoQ")
 CACHE_CHANNEL_ID = int(os.getenv("CACHE_CHANNEL_ID", "-1003086955999"))
 MONGO_DB_URI = os.getenv("MONGO_DB_URI", "mongodb+srv://jaydipmore74:xCpTm5OPAfRKYnif@cluster0.5jo18.mongodb.net/?retryWrites=true&w=majority")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "111222")
@@ -394,57 +394,6 @@ async def ensure_telegram_connection():
             logger.error(f"Failed to connect to Telegram: {e}")
             raise
 
-# Background task semaphore to limit concurrent processing
-processing_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-
-async def background_download_and_upload(ytid: str, media_type: str, 
-                                        download_url: str, title: str, 
-                                        quality: str, meta: dict):
-    """Background task to download and upload to Telegram with concurrency control"""
-    cache_key = f"{ytid}:{media_type}"
-    
-    async with processing_semaphore:
-        # Check if already cached while waiting for semaphore
-        cached = await get_cached_file(ytid, media_type)
-        if cached:
-            logger.info(f"Already cached while waiting: {cache_key}")
-            return
-        
-        # Prepare file paths
-        ext = "mp4" if media_type == "video" else "mp3"
-        safe_title = sanitize_filename(title)[:100]
-        filename = f"{ytid}_{media_type}_{quality}.{ext}"
-        filepath = os.path.join(DOWNLOAD_DIR, filename)
-        
-        async with get_session() as session:
-            try:
-                # Download file
-                logger.info(f"Downloading {ytid} to {filepath}")
-                await download_file(session, download_url, filepath)
-                
-                # Upload to Telegram
-                logger.info(f"Uploading {filename} to Telegram")
-                file_id, msg_id = await upload_to_telegram(filepath, title, media_type)
-                
-                # Save to cache
-                await save_cache_record(
-                    ytid, media_type, file_id, 
-                    CACHE_CHANNEL_ID, msg_id, filename, 
-                    {"title": title, "quality": quality, **meta}
-                )
-                
-                logger.info(f"Cached {cache_key} as file_id {file_id}")
-                
-            except Exception as e:
-                logger.error(f"Background task failed for {cache_key}: {e}")
-            finally:
-                # Clean up downloaded file
-                try:
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                except Exception as e:
-                    logger.error(f"Failed to delete {filepath}: {e}")
-
 async def get_telegram_download_url(file_id: str) -> str:
     """Get direct download URL for Telegram file"""
     try:
@@ -468,6 +417,159 @@ async def get_telegram_download_url(file_id: str) -> str:
         return f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}"
 
 # -------------------
+# God-Level Uploader System
+# -------------------
+class GodUploader:
+    """Ultra-reliable uploader system with guaranteed Telegram delivery"""
+    
+    def __init__(self):
+        self.task_queue = asyncio.Queue()
+        self.processing_tasks = set()
+        self.failed_tasks = set()
+        self.retry_delay = 300  # 5 minutes between retries
+        self.max_retries = 10
+        self.active_workers = 0
+        self.max_workers = MAX_CONCURRENT_DOWNLOADS
+        self.upload_stats = {
+            'successful': 0,
+            'failed': 0,
+            'retries': 0,
+            'queue_size': 0
+        }
+        
+    async def start_workers(self):
+        """Start worker tasks for processing uploads"""
+        for _ in range(self.max_workers):
+            asyncio.create_task(self.upload_worker())
+            
+    async def add_task(self, task_data: dict):
+        """Add a new upload task to queue"""
+        cache_key = f"{task_data['ytid']}:{task_data['media_type']}"
+        
+        # Check if already in queue or processing
+        if cache_key in self.processing_tasks or cache_key in self.failed_tasks:
+            return False
+            
+        await self.task_queue.put(task_data)
+        self.processing_tasks.add(cache_key)
+        self.upload_stats['queue_size'] = self.task_queue.qsize()
+        return True
+        
+    async def upload_worker(self):
+        """Worker task that processes uploads from queue"""
+        self.active_workers += 1
+        logger.info(f"Upload worker started. Total workers: {self.active_workers}")
+        
+        while True:
+            try:
+                task_data = await self.task_queue.get()
+                cache_key = f"{task_data['ytid']}:{task_data['media_type']}"
+                
+                # Process the task with retry mechanism
+                success = await self.process_with_retries(task_data)
+                
+                if success:
+                    self.upload_stats['successful'] += 1
+                    logger.info(f"Successfully processed {cache_key}")
+                else:
+                    self.upload_stats['failed'] += 1
+                    logger.error(f"Permanently failed to process {cache_key}")
+                    
+                self.processing_tasks.discard(cache_key)
+                self.upload_stats['queue_size'] = self.task_queue.qsize()
+                self.task_queue.task_done()
+                
+            except Exception as e:
+                logger.error(f"Upload worker crashed: {e}")
+                await asyncio.sleep(5)  # Prevent tight loop on errors
+                
+    async def process_with_retries(self, task_data: dict) -> bool:
+        """Process task with exponential backoff retry"""
+        cache_key = f"{task_data['ytid']}:{task_data['media_type']}"
+        
+        for attempt in range(self.max_retries):
+            try:
+                # Check cache again before processing
+                cached = await get_cached_file(task_data['ytid'], task_data['media_type'])
+                if cached:
+                    logger.info(f"Already cached during retry: {cache_key}")
+                    return True
+                    
+                # Download and upload
+                async with get_session() as session:
+                    # Download file
+                    ext = "mp4" if task_data['media_type'] == "video" else "mp3"
+                    safe_title = sanitize_filename(task_data['title'])[:100]
+                    filename = f"{task_data['ytid']}_{task_data['media_type']}_{task_data['quality']}.{ext}"
+                    filepath = os.path.join(DOWNLOAD_DIR, filename)
+                    
+                    await download_file(session, task_data['download_url'], filepath)
+                    
+                    # Upload to Telegram
+                    file_id, msg_id = await upload_to_telegram(
+                        filepath, task_data['title'], task_data['media_type']
+                    )
+                    
+                    # Save to cache
+                    await save_cache_record(
+                        task_data['ytid'], task_data['media_type'], file_id,
+                        CACHE_CHANNEL_ID, msg_id, filename, task_data['meta']
+                    )
+                    
+                # Clean up
+                try:
+                    os.remove(filepath)
+                except:
+                    pass
+                    
+                return True
+                
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed for {cache_key}: {e}")
+                self.upload_stats['retries'] += 1
+                
+                if attempt < self.max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = self.retry_delay * (2 ** attempt) * (0.5 + random.random())
+                    await asyncio.sleep(delay)
+                else:
+                    # Final attempt failed, add to failed set
+                    self.failed_tasks.add(cache_key)
+                    return False
+                    
+    async def get_stats(self) -> dict:
+        """Get current upload system statistics"""
+        return {
+            **self.upload_stats,
+            'active_workers': self.active_workers,
+            'processing_tasks': len(self.processing_tasks),
+            'failed_tasks': len(self.failed_tasks)
+        }
+
+# Initialize the uploader system
+uploader = GodUploader()
+
+async def guaranteed_upload(ytid: str, media_type: str, download_url: str, 
+                           title: str, quality: str, meta: dict):
+    """Guaranteed upload to Telegram via uploader system"""
+    task_data = {
+        'ytid': ytid,
+        'media_type': media_type,
+        'download_url': download_url,
+        'title': title,
+        'quality': quality,
+        'meta': meta
+    }
+    
+    # Add to uploader queue
+    added = await uploader.add_task(task_data)
+    
+    if not added:
+        logger.info(f"Task already in queue: {ytid}:{media_type}")
+    else:
+        logger.info(f"Task added to queue: {ytid}:{media_type}")
+
+# -------------------
 # API endpoints with enhanced performance
 # -------------------
 class ResultModel(BaseModel):
@@ -488,6 +590,10 @@ async def lifespan(app: FastAPI):
     await mongodb.cache.create_index([("ytid", 1), ("type", 1)])
     await mongodb.apikeys.create_index("key", unique=True)
     await mongodb.requests.create_index("timestamp")
+    
+    # Start the uploader workers
+    await uploader.start_workers()
+    logger.info("GodUploader system started")
     
     # Create a default admin key if none exists
     count = await mongodb.apikeys.count_documents({})
@@ -593,17 +699,15 @@ async def ytmp4(
                 }
             }
             
-            # Start background upload to Telegram
-            asyncio.create_task(
-                background_download_and_upload(
-                    vidid, "video", download_url,
-                    decrypted.get("title", vidid),
-                    selected_quality,
-                    {
-                        "duration": decrypted.get("durationLabel", "Unknown"),
-                        "thumbnail": decrypted.get("thumbnail")
-                    }
-                )
+            # Start guaranteed upload to Telegram
+            await guaranteed_upload(
+                vidid, "video", download_url,
+                decrypted.get("title", vidid),
+                selected_quality,
+                {
+                    "duration": decrypted.get("durationLabel", "Unknown"),
+                    "thumbnail": decrypted.get("thumbnail")
+                }
             )
             
             return response_data
@@ -699,17 +803,15 @@ async def ytmp3(
                 }
             }
             
-            # Start background upload to Telegram
-            asyncio.create_task(
-                background_download_and_upload(
-                    vidid, "audio", download_url,
-                    decrypted.get("title", vidid),
-                    selected_quality,
-                    {
-                        "duration": decrypted.get("durationLabel", "Unknown"),
-                        "thumbnail": decrypted.get("thumbnail")
-                    }
-                )
+            # Start guaranteed upload to Telegram
+            await guaranteed_upload(
+                vidid, "audio", download_url,
+                decrypted.get("title", vidid),
+                selected_quality,
+                {
+                    "duration": decrypted.get("durationLabel", "Unknown"),
+                    "thumbnail": decrypted.get("thumbnail")
+                }
             )
             
             return response_data
@@ -775,12 +877,8 @@ async def admin_stats(request: Request):
     for key in keys:
         today_usage += key.get("used_today", 0)
     
-    # System status
-    system_status = {
-        "telegram_connected": TELEGRAM_CONNECTED,
-        "concurrent_downloads": MAX_CONCURRENT_DOWNLOADS - processing_semaphore._value,
-        "processing_queue": len(processing_semaphore._waiters) if processing_semaphore._waiters else 0
-    }
+    # Upload system status
+    upload_stats = await uploader.get_stats()
     
     return {
         "status": True,
@@ -790,7 +888,7 @@ async def admin_stats(request: Request):
             "total_keys": total_keys,
             "total_cached": total_cached,
             "today_usage": today_usage,
-            "system_status": system_status
+            "upload_system": upload_stats
         }
     }
 
@@ -814,6 +912,9 @@ async def admin_panel(request: Request):
     for key in keys:
         today_usage += key.get("used_today", 0)
     
+    # Get uploader stats
+    upload_stats = await uploader.get_stats()
+    
     # Recent API keys
     recent_keys = await mongodb.apikeys.find().sort("created_at", -1).limit(5).to_list(None)
     
@@ -827,9 +928,10 @@ async def admin_panel(request: Request):
         "today_usage": today_usage,
         "recent_keys": recent_keys,
         "recent_cached": recent_cached,
+        "upload_stats": upload_stats,
         "system_status": {
             "telegram_connected": TELEGRAM_CONNECTED,
-            "concurrent_downloads": MAX_CONCURRENT_DOWNLOADS - processing_semaphore._value
+            "concurrent_downloads": upload_stats['active_workers']
         }
     })
 
@@ -871,5 +973,5 @@ async def admin_cache(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 7000))
+    port = int(os.environ.get("PORT", 6000))
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
